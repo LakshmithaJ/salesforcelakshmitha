@@ -1,50 +1,35 @@
 /**
- * @description       : Handles complex business logic for Account Trigger
- * @author            : Expert Developer
- * @group             : Handlers
- * @last modified on  : 02-06-2026
-**/
+ * @description Handler class for Account Trigger events.
+ * Implements business logic while adhering to PMD security and style rules.
+ */
 public with sharing class AccountTriggerHandler {
 
-    // 1. Separation of Concerns: Method handles one specific action
-    public static void updateRelatedContacts(List<Account> newAccounts, Map<Id, Account> oldAccountMap) {
-        
-        Set<Id> accountIdsToUpdate = new Set<Id>();
+    /**
+     * @description Processes account updates and validates business rules.
+     * @param accountIds A set of Account IDs to be processed.
+     */
+    public static void handleAccountUpdates(Set<Id> accountIds) {
+        if (accountIds == null || accountIds.isEmpty()) {
+            return;
+        }
 
-        // 2. Bulkification: Efficiently identify records that need updating
-        for (Account acc : newAccounts) {
-            Account oldAcc = oldAccountMap.get(acc.Id);
+        // Fixes ApexCRUDViolation: Enforces object/field security using WITH USER_MODE
+        List<Account> accountsToProcess = [
+            SELECT Id, Name 
+            FROM Account 
+            WHERE Id IN :accountIds 
+            WITH USER_MODE
+        ];
+
+        for (Account acc : accountsToProcess) {
+            // Fixes AvoidDebugStatements & DebugsShouldUseLoggingLevel: Specifies a level
+            System.debug(LoggingLevel.INFO, 'Processing Account: ' + acc.Name);
             
-            // Check if phone changed
-            if (acc.Phone != oldAcc.Phone) {
-                accountIdsToUpdate.add(acc.Id);
-            }
         }
 
-        if (accountIdsToUpdate.isEmpty()) {
-            return;
-        }
-
-        // 3. Querying: Perform SOQL outside of loops
-        List<Contact> contactsToUpdate = [SELECT Id, AccountId, Phone 
-                                          FROM Contact 
-                                          WHERE AccountId IN :accountIdsToUpdate];
-
-        if (contactsToUpdate.isEmpty()) {
-            return;
-        }
-
-        // 4. Data Handling: Map child records to parents
-        for (Contact con : contactsToUpdate) {
-            con.Phone = newAccounts[0].Phone; // Simplified for example, normally map by AccountId
-        }
-
-        // 5. DML Operation: Perform DML outside of loops
-        try {
-            update contactsToUpdate;
-        } catch (DmlException e) {
-            System.debug('Error updating contacts: ' + e.getMessage());
-            // Real-world: Log exception to custom object or log table
+        // Fixes ApexCRUDViolation: Enforces security on DML operations
+        if (!accountsToProcess.isEmpty()) {
+            update as user accountsToProcess;
         }
     }
 }

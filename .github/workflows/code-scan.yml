@@ -1,0 +1,56 @@
+name: Salesforce Code Analyzer Workflow
+on:
+  pull_request:
+    types: [opened, synchronize, reopened] # Runs on initial PR and every new commit/push
+
+jobs:
+  salesforce-code-analyzer-workflow:
+    permissions:
+      pull-requests: write 
+      contents: read 
+      actions: read 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out files
+        uses: actions/checkout@v5
+
+      - name: Ensure node v20.9.0 or greater
+        uses: actions/setup-node@v5
+        with:
+          node-version: '>=20.9.0'
+
+      - name: Ensure java v11 or greater
+        uses: actions/setup-java@v5
+        with:
+          java-version: '>=11'
+          distribution: 'zulu'
+
+      - name: Ensure python v3.10 or greater
+        uses: actions/setup-python@v6
+        with:
+          python-version: '>=3.10'
+
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli@latest
+
+      - name: Install Latest Salesforce Code Analyzer CLI Plugin
+        run: sf plugins install code-analyzer@latest
+
+      - name: Run Salesforce Code Analyzer
+        id: run-code-analyzer
+        uses: forcedotcom/run-code-analyzer@v2
+        with:
+          # --severity-threshold 3 ensures the tool flags these levels
+          run-arguments: --workspace . --view detail --output-file sfca_results.html --output-file sfca_results.json --severity-threshold 3
+          results-artifact-name: salesforce-code-analyzer-results
+          github-token: ${{ github.token }}
+
+      # This gate stops the workflow if Severity 1, 2, or 3 issues are found in the PR changes
+      - name: Fail on Severity 1, 2, or 3 Violations
+        if: |
+          steps.run-code-analyzer.outputs.num-sev1-violations-in-changed-files > 0 ||
+          steps.run-code-analyzer.outputs.num-sev2-violations-in-changed-files > 0 ||
+          steps.run-code-analyzer.outputs.num-sev3-violations-in-changed-files > 0
+        run: |
+          echo "Stopping workflow: Violations with Severity 3 or higher were detected."
+          exit 1
